@@ -1,76 +1,59 @@
 package client;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
+import java.net.*;
 import java.util.Scanner;
 
 public class Client {
-    private String host;
-    private int port;
-    private Socket socket;
-    private PrintWriter out;
-    private BufferedReader in;
-    private Scanner scanner;
+    private String serverHost;
+    private int serverPort;
+    private DatagramSocket socket;
+    private InetAddress serverAddress;
 
-    public Client(String host, int port) {
-        this.host = host;
-        this.port = port;
+    public Client(String serverHost, int serverPort) {
+        this.serverHost = serverHost;
+        this.serverPort = serverPort;
     }
 
     public void start() {
-        scanner = new Scanner(System.in);
+        Scanner scanner = new Scanner(System.in);
         try {
-            // Connexion au serveur
-            socket = new Socket(host, port);
-            System.out.println("[Client] Connecté au serveur " + host + ":" + port);
+            socket = new DatagramSocket();
+            serverAddress = InetAddress.getByName(serverHost);
 
-            // Prépare les flux
-            out = new PrintWriter(socket.getOutputStream(), true);
-            in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-            // Thread pour lire en continu les messages venant du serveur
-            Thread readThread = new Thread(() -> {
+            // Thread pour recevoir les messages du serveur
+            Thread receiveThread = new Thread(() -> {
                 try {
-                    String response;
-                    while ((response = in.readLine()) != null) {
-                        System.out.println(response);
+                    while (true) {
+                        byte[] buffer = new byte[1024];
+                        DatagramPacket packetRecu = new DatagramPacket(buffer, buffer.length);
+                        socket.receive(packetRecu);
+
+                        String messageRecu = new String(packetRecu.getData(), 0, packetRecu.getLength());
+                        System.out.println(messageRecu);
                     }
                 } catch (IOException e) {
-                    System.out.println("[Client] Connexion fermée par le serveur.");
+                    System.out.println("[Client] Connexion fermée.");
                 }
             });
-            readThread.start();
+            receiveThread.start();
 
-            // Boucle pour envoyer des messages au serveur
+            // Envoi des messages
             while (true) {
-                String userInput = scanner.nextLine();
-                if (userInput.equalsIgnoreCase("quit")) {
-                    // On envoie "quit" puis on arrête
-                    out.println("quit");
+                String message = scanner.nextLine();
+                byte[] buffer = message.getBytes();
+                DatagramPacket packetEnvoi = new DatagramPacket(buffer, buffer.length, serverAddress, serverPort);
+                socket.send(packetEnvoi);
+
+                if (message.equalsIgnoreCase("quit")) {
+                    System.out.println("[Client] Déconnexion.");
                     break;
                 }
-                // Sinon on envoie le message
-                out.println(userInput);
             }
 
             // Fermeture
-            close();
-            readThread.join(); // Attend la fin du thread de lecture si besoin
-
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void close() {
-        try {
-            if (out != null) out.close();
-            if (in != null)  in.close();
-            if (socket != null && !socket.isClosed()) socket.close();
-            if (scanner != null) scanner.close();
+            socket.close();
+            scanner.close();
         } catch (IOException e) {
             e.printStackTrace();
         }

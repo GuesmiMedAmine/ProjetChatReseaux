@@ -1,80 +1,34 @@
 package server;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 
-public class ClientHandler extends Thread {
-    private Socket socket;
-    private Server server;
-    private PrintWriter out;
-    private BufferedReader in;
-    private String clientName;
+public class ClientHandler implements Runnable {
+    private DatagramSocket socket;
+    private DatagramPacket packetRecu;
 
-    public ClientHandler(Socket socket, Server server) {
+    public ClientHandler(DatagramSocket socket, DatagramPacket packetRecu) {
         this.socket = socket;
-        this.server = server;
+        this.packetRecu = packetRecu;
     }
 
     @Override
     public void run() {
         try {
-            // Prépare les flux de lecture/écriture
-            out = new PrintWriter(socket.getOutputStream(), true);
-            in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            InetAddress clientAddress = packetRecu.getAddress();
+            int clientPort = packetRecu.getPort();
+            String messageRecu = new String(packetRecu.getData(), 0, packetRecu.getLength());
 
-            // Demande au client de s'identifier
-            out.println("Bienvenue ! Entrez votre nom :");
-            clientName = in.readLine(); // le client envoie son nom
-            out.println("Bonjour " + clientName + " ! Tapez vos messages (ou 'quit' pour sortir).");
+            System.out.println("[Serveur] Reçu de " + clientAddress + ":" + clientPort + " -> " + messageRecu);
 
-            // Préviens tout le monde de l'arrivée de ce client
-            server.broadcast("[Serveur] " + clientName + " a rejoint la conversation.");
-
-            // Boucle de lecture des messages
-            String message;
-            while ((message = in.readLine()) != null) {
-                // Si l'utilisateur veut quitter
-                if (message.equalsIgnoreCase("quit")) {
-                    out.println("Au revoir !");
-                    break;
-                }
-                // Sinon, on diffuse le message à tous
-                server.broadcast("[" + clientName + "] " + message);
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            // Nettoyage quand le client se déconnecte
-            fermerConnexion();
-        }
-    }
-
-    private void fermerConnexion() {
-        try {
-            // Retirer ce client de la liste
-            server.removeClient(this);
-
-            // Prévenir tout le monde
-            if (clientName != null) {
-                server.broadcast("[Serveur] " + clientName + " s'est déconnecté.");
-            }
-
-            // Fermer les flux
-            if (out != null) out.close();
-            if (in != null) in.close();
-            if (socket != null && !socket.isClosed()) socket.close();
-
+            String response = "Serveur : " + messageRecu;
+            byte[] buffer = response.getBytes();
+            DatagramPacket packetEnvoi = new DatagramPacket(buffer, buffer.length, clientAddress, clientPort);
+            socket.send(packetEnvoi);
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    // Envoi d'un message vers CE client
-    public void sendMessage(String msg) {
-        out.println(msg);
     }
 }
