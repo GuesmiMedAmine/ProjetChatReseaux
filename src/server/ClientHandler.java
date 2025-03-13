@@ -17,43 +17,66 @@ public class ClientHandler implements Runnable {
     @Override
     public void run() {
         try {
-            DatagramSocket socket = new DatagramSocket(); // Nouveau socket pour réponse
+            DatagramSocket socket = new DatagramSocket(); // Socket dédié pour la réponse
             InetAddress clientAddress = packetRecu.getAddress();
             int clientPort = packetRecu.getPort();
             String messageRecu = new String(packetRecu.getData(), 0, packetRecu.getLength());
 
-            // Afficher l'adresse et le port du client qui a envoyé le message
             System.out.println("[Serveur] Message reçu de : " + clientAddress + " - Port : " + clientPort);
 
-            // Si le message contient "Nom : ", c'est un nouvel utilisateur
+            // Enregistrement du client s'il s'agit d'un nouveau nom d'utilisateur
             if (messageRecu.startsWith("Nom : ")) {
                 String userName = messageRecu.substring(6);
                 server.addClient(clientAddress, clientPort, userName);
                 System.out.println("[Serveur] Nouveau client : " + userName);
             } else {
-                // Identifier l'expéditeur
+                // Identifier l'expéditeur à partir de la liste des clients
                 String senderName = "Inconnu";
-                for (int i = 0; i < server.getClientAddresses().size(); i++) {
-                    if (server.getClientAddresses().get(i).equals(clientAddress) &&
-                        server.getClientPorts().get(i) == clientPort) {
-                        senderName = server.getClientNames().get(i);
+                for (ClientInfo client : server.getClients()) {
+                    if (client.getAddress().equals(clientAddress) && client.getPort() == clientPort) {
+                        senderName = client.getUserName();
                         break;
                     }
                 }
 
-                // Diffuser le message à tous les clients
-                String messageDiffusion = senderName + " : " + messageRecu;
-                byte[] buffer = messageDiffusion.getBytes();
+                // Gestion des messages privés : si le message commence par "@"
+                if (messageRecu.startsWith("@")) {
+                    int espaceIndex = messageRecu.indexOf(' ');
+                    if (espaceIndex != -1) {
+                        String destinataire = messageRecu.substring(1, espaceIndex);
+                        String messagePrive = messageRecu.substring(espaceIndex + 1);
+                        boolean trouve = false;
 
-                for (int i = 0; i < server.getClientAddresses().size(); i++) {
-                    InetAddress destAddress = server.getClientAddresses().get(i);
-                    int destPort = server.getClientPorts().get(i);
+                        // Parcourir la liste des clients pour trouver le destinataire
+                        for (ClientInfo client : server.getClients()) {
+                            if (client.getUserName().equalsIgnoreCase(destinataire)) {
+                                String messageEnvoi = "(Privé) " + senderName + " : " + messagePrive;
+                                byte[] buffer = messageEnvoi.getBytes();
+                                DatagramPacket packetEnvoi = new DatagramPacket(buffer, buffer.length, client.getAddress(), client.getPort());
+                                socket.send(packetEnvoi);
+                                trouve = true;
+                                break;
+                            }
+                        }
+                        if (!trouve) {
+                            // Informer l'expéditeur si le destinataire n'a pas été trouvé
+                            String messageErreur = "[Serveur] Utilisateur '" + destinataire + "' non trouvé.";
+                            byte[] bufferErreur = messageErreur.getBytes();
+                            DatagramPacket packetErreur = new DatagramPacket(bufferErreur, bufferErreur.length, clientAddress, clientPort);
+                            socket.send(packetErreur);
+                        }
+                    }
+                } else {
+                    // Diffusion du message à tous les clients connectés
+                    String messageDiffusion = senderName + " : " + messageRecu;
+                    byte[] buffer = messageDiffusion.getBytes();
 
-                    DatagramPacket packetEnvoi = new DatagramPacket(buffer, buffer.length, destAddress, destPort);
-                    socket.send(packetEnvoi);
+                    for (ClientInfo client : server.getClients()) {
+                        DatagramPacket packetEnvoi = new DatagramPacket(buffer, buffer.length, client.getAddress(), client.getPort());
+                        socket.send(packetEnvoi);
+                    }
                 }
             }
-
             socket.close();
         } catch (IOException e) {
             e.printStackTrace();

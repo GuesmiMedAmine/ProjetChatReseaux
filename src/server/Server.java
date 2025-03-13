@@ -10,11 +10,7 @@ import java.util.List;
 public class Server {
     private int port;
     private DatagramSocket serverSocket;
-
-    // Liste des clients connectés
-    private List<InetAddress> clientAddresses = new ArrayList<>();
-    private List<Integer> clientPorts = new ArrayList<>();
-    private List<String> clientNames = new ArrayList<>();
+    private List<ClientInfo> clients = new ArrayList<>();
 
     public Server(int port) {
         this.port = port;
@@ -30,7 +26,7 @@ public class Server {
                 DatagramPacket packetRecu = new DatagramPacket(buffer, buffer.length);
                 serverSocket.receive(packetRecu);
 
-                // Démarrer un thread pour gérer le message
+                // Démarrer un thread pour gérer le message reçu
                 new Thread(new ClientHandler(this, packetRecu)).start();
 
                 // Afficher la liste des clients connectés
@@ -41,36 +37,29 @@ public class Server {
         }
     }
 
-    // Ajouter un client à la liste
-    public synchronized void addClient(InetAddress address, int port, String name) {
-        if (!clientAddresses.contains(address) || !clientPorts.contains(port)) {
-            clientAddresses.add(address);
-            clientPorts.add(port);
-            clientNames.add(name);
-
-            // Afficher l'adresse et le port du client
-            System.out.println("[Serveur] Nouveau client : " + name + " - Adresse : " + address + " - Port : " + port);
+    public synchronized void addClient(InetAddress address, int port, String userName) {
+        boolean exists = false;
+        for (ClientInfo client : clients) {
+            if (client.getAddress().equals(address) && client.getPort() == port) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            ClientInfo nouveauClient = new ClientInfo(address, port, userName);
+            clients.add(nouveauClient);
+            System.out.println("[Serveur] Nouveau client : " + nouveauClient);
         }
     }
 
-    // Récupérer la liste des clients
-    public synchronized List<InetAddress> getClientAddresses() {
-        return clientAddresses;
+    public synchronized List<ClientInfo> getClients() {
+        return clients;
     }
 
-    public synchronized List<Integer> getClientPorts() {
-        return clientPorts;
-    }
-
-    public synchronized List<String> getClientNames() {
-        return clientNames;
-    }
-
-    // Afficher la liste des clients connectés
     public synchronized void printClientList() {
         System.out.println("[Serveur] Liste des clients connectés :");
-        for (int i = 0; i < clientAddresses.size(); i++) {
-            System.out.println(clientNames.get(i) + " - Adresse : " + clientAddresses.get(i) + " - Port : " + clientPorts.get(i));
+        for (ClientInfo client : clients) {
+            System.out.println(client);
         }
     }
 }
